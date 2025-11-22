@@ -1,5 +1,5 @@
 // main.rs
-// Solar System Renderer with full features
+// Solar System Renderer - Fixed lighting with world space positions
 
 mod framebuffer;
 mod triangle;
@@ -24,18 +24,19 @@ use obj::Obj;
 use framebuffer::Framebuffer;
 use raylib::prelude::*;
 use std::f32::consts::PI;
-use matrix::{create_model_matrix, create_projection_matrix, create_viewport_matrix};
+use matrix::{create_model_matrix, create_projection_matrix, create_viewport_matrix, multiply_matrix_vector4};
 use vertex::Vertex;
 use camera::Camera;
 use shaders::vertex_shader;
 use light::Light;
 use shader_system::{apply_shader, ShaderType};
-use solar_system::{SolarSystem, CelestialObject};
+use solar_system::SolarSystem;
 use skybox::Skybox;
 use spaceship::Spaceship;
 use orbit_renderer::OrbitRenderer;
 use warp::WarpSystem;
 use collision::CollisionSystem;
+use rayon::prelude::*;
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
@@ -45,42 +46,103 @@ pub struct Uniforms {
     pub time: f32,
 }
 
-fn render_object(
+struct ProcessedFragment {
+    x: i32,
+    y: i32,
+    depth: f32,
+    color: Vector3,
+}
+
+/// Transforma una posición de model space a world space
+#[inline]
+fn transform_to_world(pos: Vector3, model_matrix: &Matrix) -> Vector3 {
+    let v = Vector4::new(pos.x, pos.y, pos.z, 1.0);
+    let result = multiply_matrix_vector4(model_matrix, &v);
+    Vector3::new(result.x, result.y, result.z)
+}
+
+/// Renderiza un objeto con iluminación correcta en world space
+fn render_object_parallel(
     framebuffer: &mut Framebuffer,
     uniforms: &Uniforms,
     vertex_array: &[Vertex],
     light: &Light,
     shader_type: ShaderType,
 ) {
+    // 1. Transformar vértices
     let transformed: Vec<Vertex> = vertex_array
-        .iter()
+        .par_iter()
         .map(|v| vertex_shader(v, uniforms))
         .collect();
     
-    let triangles: Vec<[Vertex; 3]> = transformed
-        .chunks_exact(3)
-        .map(|c| [c[0].clone(), c[1].clone(), c[2].clone()])
+    // 2. Pre-calcular posiciones en world space para cada vértice
+    let world_positions: Vec<Vector3> = vertex_array
+        .par_iter()
+        .map(|v| transform_to_world(v.position, &uniforms.model_matrix))
         .collect();
     
-    let mut fragments = Vec::new();
-    for tri in &triangles {
-        fragments.extend(triangle(&tri[0], &tri[1], &tri[2], light));
-    }
+    // 3. Ensamblar triángulos con sus world positions
+    let triangles: Vec<([Vertex; 3], [Vector3; 3])> = transformed
+        .chunks_exact(3)
+        .zip(world_positions.chunks_exact(3))
+        .map(|(verts, world_pos)| {
+            (
+                [verts[0].clone(), verts[1].clone(), verts[2].clone()],
+                [world_pos[0], world_pos[1], world_pos[2]]
+            )
+        })
+        .collect();
     
-    for fragment in fragments {
-        let color = apply_shader(&fragment, uniforms, shader_type);
-        framebuffer.point(
-            fragment.position.x as i32,
-            fragment.position.y as i32,
-            fragment.depth,
-            color,
-        );
+    // 4. Rasterizar con world positions correctas
+    let processed: Vec<ProcessedFragment> = triangles
+        .par_iter()
+        .flat_map(|(tri, world_pos)| {
+            let frags = triangle(
+                &tri[0], &tri[1], &tri[2], 
+                light,
+                world_pos[0], world_pos[1], world_pos[2]
+            );
+            frags.into_iter().map(|frag| {
+                let color = apply_shader(&frag, uniforms, shader_type);
+                ProcessedFragment {
+                    x: frag.position.x as i32,
+                    y: frag.position.y as i32,
+                    depth: frag.depth,
+                    color,
+                }
+            }).collect::<Vec<_>>()
+        })
+        .collect();
+    
+    // 5. Escribir al framebuffer
+    for frag in processed {
+        framebuffer.point(frag.x, frag.y, frag.depth, frag.color);
     }
+}
+
+fn is_visible(pos: Vector3, scale: f32, camera_eye: Vector3, camera_target: Vector3) -> bool {
+    let to_obj = Vector3::new(pos.x - camera_eye.x, pos.y - camera_eye.y, pos.z - camera_eye.z);
+    let to_target = Vector3::new(
+        camera_target.x - camera_eye.x,
+        camera_target.y - camera_eye.y,
+        camera_target.z - camera_eye.z,
+    );
+    
+    let dist = (to_obj.x * to_obj.x + to_obj.y * to_obj.y + to_obj.z * to_obj.z).sqrt();
+    if dist > 80.0 { return false; }
+    
+    let dot = to_obj.x * to_target.x + to_obj.y * to_target.y + to_obj.z * to_target.z;
+    dot > -scale * 2.0 || dist < scale * 5.0
 }
 
 fn main() {
     const WIDTH: i32 = 1300;
     const HEIGHT: i32 = 900;
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_cpus::get())
+        .build_global()
+        .unwrap_or(());
 
     let (mut window, thread) = raylib::init()
         .size(WIDTH, HEIGHT)
@@ -93,37 +155,31 @@ fn main() {
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     framebuffer.set_background_color(Color::new(2, 2, 8, 255));
     
-    // Initialize components
     let mut camera = Camera::new(
         Vector3::new(0.0, 15.0, 30.0),
         Vector3::new(0.0, 0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
     );
     
+    // Luz en el centro (posición del sol)
     let light = Light::new(Vector3::new(0.0, 0.0, 0.0));
     
-    // Load models
     let obj = Obj::load("./models/sphere.obj").expect("Failed to load sphere.obj");
     let vertex_array = obj.get_vertex_array();
     
-    // Load spaceship model - adjust path and shader as needed
     let spaceship = Spaceship::load("./models/spaceship.obj", ShaderType::Rocky, 0.3)
         .expect("Failed to load spaceship.obj");
     
-    // Create systems
     let mut system = SolarSystem::create_basic_system();
     let skybox = Skybox::new(WIDTH, HEIGHT, 800);
     let orbit_renderer = OrbitRenderer::new(64);
     let mut warp_system = WarpSystem::new();
     
-    // Initialize warp targets
     setup_warp_targets(&mut warp_system, &system);
     
-    // Display settings
     let mut show_orbits = true;
     let mut show_ship = true;
     
-    // Spaceship fixed position in world space - pointing toward center
     let spaceship_position = Vector3::new(-15.0, -5.0, -20.0);
     let spaceship_rotation = Vector3::new(0.0, PI + 0.785, PI);
     
@@ -136,21 +192,17 @@ fn main() {
         let delta_time = window.get_frame_time();
         let time = window.get_time() as f32;
         
-        // Handle input
         handle_warp_input(&window, &mut warp_system, &camera);
         handle_toggle_input(&window, &mut show_orbits, &mut show_ship);
         
-        // Update warp animation
         if let Some((new_eye, new_target)) = warp_system.update(delta_time) {
             camera.set_position(new_eye, new_target);
         }
         
-        // Process camera input only if not warping
         if !warp_system.is_warping() {
             camera.process_input(&window);
         }
         
-        // Apply collision detection
         let collision_objects = get_collision_objects(&system);
         let safe_pos = CollisionSystem::check_and_resolve(camera.eye, &collision_objects, 0.5);
         if (safe_pos.x - camera.eye.x).abs() > 0.01 
@@ -164,16 +216,18 @@ fn main() {
         
         let view = camera.get_view_matrix();
         
-        // Render skybox first (background)
         skybox.render(&mut framebuffer, time);
         
-        // Render orbits
         if show_orbits {
             render_orbits(&orbit_renderer, &mut framebuffer, &system, &view, &projection, &viewport);
         }
         
-        // Render celestial objects
+        // Renderizar objetos celestes
         for object in &system.objects {
+            if !is_visible(object.position, object.scale, camera.eye, camera.target) {
+                continue;
+            }
+            
             let model = create_model_matrix(object.position, object.scale, object.rotation);
             let uniforms = Uniforms {
                 model_matrix: model,
@@ -182,11 +236,11 @@ fn main() {
                 viewport_matrix: viewport,
                 time,
             };
-            render_object(&mut framebuffer, &uniforms, &vertex_array, &light, object.shader_type);
+            render_object_parallel(&mut framebuffer, &uniforms, &vertex_array, &light, object.shader_type);
         }
         
-        // Render spaceship at fixed world position
-        if show_ship {
+        // Renderizar nave
+        if show_ship && is_visible(spaceship_position, spaceship.scale, camera.eye, camera.target) {
             let ship_model = create_model_matrix(spaceship_position, spaceship.scale, spaceship_rotation);
             let ship_uniforms = Uniforms {
                 model_matrix: ship_model,
@@ -195,7 +249,7 @@ fn main() {
                 viewport_matrix: viewport,
                 time,
             };
-            render_object(&mut framebuffer, &ship_uniforms, spaceship.get_vertices(), &light, spaceship.shader_type);
+            render_object_parallel(&mut framebuffer, &ship_uniforms, spaceship.get_vertices(), &light, spaceship.shader_type);
         }
         
         framebuffer.swap_buffers(&mut window, &thread);
@@ -218,10 +272,6 @@ fn handle_warp_input(window: &RaylibHandle, warp: &mut WarpSystem, camera: &Came
             println!("Warping to: {}", name);
         }
     }
-    if window.is_key_pressed(KeyboardKey::KEY_LEFT_SHIFT) && window.is_key_pressed(KeyboardKey::KEY_TAB) {
-        warp.warp_prev(camera.eye, camera.target);
-    }
-    // Number keys 3-9 for direct warp
     for i in 3..=9 {
         let key = match i {
             3 => KeyboardKey::KEY_THREE,
@@ -242,11 +292,9 @@ fn handle_warp_input(window: &RaylibHandle, warp: &mut WarpSystem, camera: &Came
 fn handle_toggle_input(window: &RaylibHandle, show_orbits: &mut bool, show_ship: &mut bool) {
     if window.is_key_pressed(KeyboardKey::KEY_O) {
         *show_orbits = !*show_orbits;
-        println!("Orbits: {}", if *show_orbits { "ON" } else { "OFF" });
     }
     if window.is_key_pressed(KeyboardKey::KEY_V) {
         *show_ship = !*show_ship;
-        println!("Ship: {}", if *show_ship { "ON" } else { "OFF" });
     }
 }
 
@@ -275,22 +323,11 @@ fn print_controls() {
     println!("\n╔════════════════════════════════════════╗");
     println!("║     SOLAR SYSTEM RENDERER              ║");
     println!("╠════════════════════════════════════════╣");
-    println!("║ CAMERA CONTROLS:                       ║");
-    println!("║   W/S     - Pitch up/down              ║");
-    println!("║   A/D     - Rotate left/right          ║");
-    println!("║   Q/E     - Pan horizontally           ║");
-    println!("║   R/F     - Pan vertically             ║");
-    println!("║   ↑/↓     - Zoom in/out                ║");
-    println!("╠════════════════════════════════════════╣");
-    println!("║ WARP CONTROLS:                         ║");
-    println!("║   TAB     - Warp to next object        ║");
-    println!("║   3-9     - Warp to specific object    ║");
-    println!("║   ESC     - Cancel warp (if active)    ║");
-    println!("╠════════════════════════════════════════╣");
-    println!("║ DISPLAY:                               ║");
-    println!("║   O       - Toggle orbit paths         ║");
-    println!("║   V       - Toggle spaceship           ║");
-    println!("╠════════════════════════════════════════╣");
-    println!("║   ESC     - Exit                       ║");
+    println!("║ WASD - Camera rotation                 ║");
+    println!("║ Q/E  - Pan horizontal | R/F - Vertical ║");
+    println!("║ ↑/↓  - Zoom | Z/X - Move forward/back  ║");
+    println!("║ TAB  - Warp next | 3-9 - Warp to obj   ║");
+    println!("║ O    - Toggle orbits | V - Toggle ship ║");
+    println!("║ ESC  - Exit                            ║");
     println!("╚════════════════════════════════════════╝\n");
 }
