@@ -15,13 +15,13 @@ pub struct Spaceship {
 
 impl Spaceship {
     /// Load spaceship from OBJ file
-    pub fn load(path: &str, shader_type: ShaderType, scale: f32) -> Result<Self, tobj::LoadError> {
+    pub fn load(path: &str, scale: f32) -> Result<Self, tobj::LoadError> {
         let obj = Obj::load(path)?;
         let vertices = obj.get_vertex_array();
         
         Ok(Spaceship {
             vertices,
-            shader_type,
+            shader_type: ShaderType::Spaceship,
             scale,
         })
     }

@@ -154,11 +154,9 @@ impl SolarSystem {
     /// Create a basic solar system preset
     pub fn create_basic_system() -> Self {
         let mut system = SolarSystem::new();
-
-        system.add(CelestialObject::star(1.0));
         
         // Central star (Sun)
-        let sun_idx = system.add(CelestialObject::star(3.0));
+        let sun_idx = system.add(CelestialObject::star(4.0));
         
         // Inner rocky planet (Mercury-like)
         system.add(CelestialObject::planet(
@@ -179,7 +177,7 @@ impl SolarSystem {
         ));
         
         // Earth-like planet with moon
-        let earth_idx = system.add(CelestialObject::planet(
+        system.add(CelestialObject::planet(
             sun_idx,
             17.0,
             0.05,
@@ -187,20 +185,47 @@ impl SolarSystem {
             ShaderType::CloudPlanet
         ));
         
-        // Gas giant (Jupiter-like)
-        let jupiter_idx = system.add(CelestialObject::planet(
+        // Ocean planet - Mundo acuático
+        system.add(CelestialObject::planet(
             sun_idx,
-        24.0,
+            20.5,
+            0.045,
+            0.9,
+            ShaderType::Ocean
+        ));
+        
+        // Gas giant (Jupiter-like)
+        system.add(CelestialObject::planet(
+            sun_idx,
+            27.0,
             0.03,
             1.5,
             ShaderType::GasGiant
         ));
         
+        // Desert planet
+        system.add(CelestialObject::planet(
+            sun_idx,
+            31.0,
+            0.025,
+            0.7,
+            ShaderType::Desert
+        ));
+        
+        // Striped gas giant
+        system.add(CelestialObject::planet(
+            sun_idx,
+            37.0,
+            0.02,
+            1.3,
+            ShaderType::Striped
+        ));
+        
         // Outer ice world
         system.add(CelestialObject::planet(
             sun_idx,
-            30.0,
-            0.02,
+            45.0,
+            0.015,
             0.8,
             ShaderType::IceWorld
         ));

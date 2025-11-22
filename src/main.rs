@@ -156,7 +156,7 @@ fn main() {
     framebuffer.set_background_color(Color::new(2, 2, 8, 255));
     
     let mut camera = Camera::new(
-        Vector3::new(0.0, 15.0, 30.0),
+        Vector3::new(0.0, 25.0, 40.0),
         Vector3::new(0.0, 0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
     );
@@ -167,7 +167,7 @@ fn main() {
     let obj = Obj::load("./models/sphere.obj").expect("Failed to load sphere.obj");
     let vertex_array = obj.get_vertex_array();
     
-    let spaceship = Spaceship::load("./models/spaceship.obj", ShaderType::Rocky, 0.3)
+    let spaceship = Spaceship::load("./models/spaceship.obj", 0.3)
         .expect("Failed to load spaceship.obj");
     
     let mut system = SolarSystem::create_basic_system();
