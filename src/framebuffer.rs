@@ -35,15 +35,31 @@ impl Framebuffer {
     }
 
     /// Sets a pixel with depth testing
-    /// Only draws if the new depth is closer than the existing depth
     pub fn point(&mut self, x: i32, y: i32, depth: f32, color: Vector3) {
         if x >= 0 && x < self.width && y >= 0 && y < self.height {
             let index = (y * self.width + x) as usize;
 
-            // Depth test: only draw if closer to camera
             if depth < self.depth_buffer[index] {
                 self.depth_buffer[index] = depth;
                 
+                let pixel_color = Color::new(
+                    (color.x.clamp(0.0, 1.0) * 255.0) as u8,
+                    (color.y.clamp(0.0, 1.0) * 255.0) as u8,
+                    (color.z.clamp(0.0, 1.0) * 255.0) as u8,
+                    255,
+                );
+                self.color_buffer.draw_pixel(x, y, pixel_color);
+            }
+        }
+    }
+    
+    /// Sets a pixel without depth testing (for background elements like stars)
+    pub fn point_no_depth(&mut self, x: i32, y: i32, color: Vector3) {
+        if x >= 0 && x < self.width && y >= 0 && y < self.height {
+            let index = (y * self.width + x) as usize;
+            
+            // Only draw if nothing else has been drawn here
+            if self.depth_buffer[index] == f32::INFINITY {
                 let pixel_color = Color::new(
                     (color.x.clamp(0.0, 1.0) * 255.0) as u8,
                     (color.y.clamp(0.0, 1.0) * 255.0) as u8,
