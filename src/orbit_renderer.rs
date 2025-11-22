@@ -3,7 +3,7 @@
 
 use raylib::prelude::*;
 use crate::framebuffer::Framebuffer;
-use crate::matrix::{create_view_matrix, create_projection_matrix, create_viewport_matrix, multiply_matrix_vector4};
+use crate::matrix::multiply_matrix_vector4;
 use std::f32::consts::PI;
 
 /// Renders orbit paths as dotted circles
@@ -13,7 +13,7 @@ pub struct OrbitRenderer {
 
 impl OrbitRenderer {
     pub fn new(segments: usize) -> Self {
-        OrbitRenderer { segments }
+        OrbitRenderer { segments: segments * 2 }
     }
     
     /// Project a 3D point to screen space
@@ -61,26 +61,24 @@ impl OrbitRenderer {
         view: &Matrix,
         projection: &Matrix,
         viewport: &Matrix,
-        color: Vector3,
+        _color: Vector3,
     ) {
         let step = 2.0 * PI / self.segments as f32;
+        let white = Vector3::new(0.7, 0.7, 0.7);
         
         for i in 0..self.segments {
-            // Only draw every other segment for dotted effect
-            if i % 2 != 0 {
-                continue;
-            }
-            
             let angle = i as f32 * step;
             let x = center.x + radius * angle.cos();
             let z = center.z + radius * angle.sin();
             let point = Vector3::new(x, center.y, z);
             
-            if let Some((sx, sy, depth)) = self.project_point(point, view, projection, viewport) {
-                // Draw a small cross for visibility
-                framebuffer.point_no_depth(sx, sy, color);
-                framebuffer.point_no_depth(sx + 1, sy, color * 0.7);
-                framebuffer.point_no_depth(sx - 1, sy, color * 0.7);
+            if let Some((sx, sy, _depth)) = self.project_point(point, view, projection, viewport) {
+                // Draw thicker white dots
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        framebuffer.point_no_depth(sx + dx, sy + dy, white);
+                    }
+                }
             }
         }
     }

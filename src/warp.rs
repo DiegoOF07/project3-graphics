@@ -65,7 +65,7 @@ impl WarpSystem {
             end_pos,
             end_target,
             progress: 0.0,
-            duration: 1.5, // 1.5 second animation
+            duration: 0.8, // Reduced from 1.5 to 0.8 seconds for faster transition
         };
         
         self.current_target = target_idx;

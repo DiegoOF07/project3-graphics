@@ -100,7 +100,7 @@ fn main() {
         Vector3::new(0.0, 1.0, 0.0),
     );
     
-    let light = Light::new(Vector3::new(0.0, 1.0, 1.0));
+    let light = Light::new(Vector3::new(0.0, 0.0, 0.0));
     
     // Load models
     let obj = Obj::load("./models/sphere.obj").expect("Failed to load sphere.obj");
@@ -123,6 +123,10 @@ fn main() {
     let mut show_orbits = true;
     let mut show_ship = true;
     
+    // Spaceship fixed position in world space - pointing toward center
+    let spaceship_position = Vector3::new(-15.0, -5.0, -20.0);
+    let spaceship_rotation = Vector3::new(0.0, PI + 0.785, PI);
+    
     let projection = create_projection_matrix(PI / 3.0, WIDTH as f32 / HEIGHT as f32, 0.1, 100.0);
     let viewport = create_viewport_matrix(0.0, 0.0, WIDTH as f32, HEIGHT as f32);
 
@@ -133,7 +137,6 @@ fn main() {
         let time = window.get_time() as f32;
         
         // Handle input
-        handle_system_switch(&window, &mut system, &mut warp_system);
         handle_warp_input(&window, &mut warp_system, &camera);
         handle_toggle_input(&window, &mut show_orbits, &mut show_ship);
         
@@ -182,16 +185,9 @@ fn main() {
             render_object(&mut framebuffer, &uniforms, &vertex_array, &light, object.shader_type);
         }
         
-        // Render spaceship
+        // Render spaceship at fixed world position
         if show_ship {
-            let (ship_pos, ship_rot) = Spaceship::calculate_transform(
-                camera.eye, 
-                camera.target, 
-                camera.up,
-                2.0,  // distance in front of camera
-                0.5,  // offset below camera view
-            );
-            let ship_model = create_model_matrix(ship_pos, spaceship.scale, ship_rot);
+            let ship_model = create_model_matrix(spaceship_position, spaceship.scale, spaceship_rotation);
             let ship_uniforms = Uniforms {
                 model_matrix: ship_model,
                 view_matrix: view,
@@ -212,19 +208,6 @@ fn setup_warp_targets(warp: &mut WarpSystem, system: &SolarSystem) {
         let name = format!("Object {}", i);
         let view_dist = obj.scale * 4.0 + 2.0;
         warp.add_target(&name, obj.position, view_dist);
-    }
-}
-
-fn handle_system_switch(window: &RaylibHandle, system: &mut SolarSystem, warp: &mut WarpSystem) {
-    if window.is_key_pressed(KeyboardKey::KEY_ONE) {
-        *system = SolarSystem::create_basic_system();
-        setup_warp_targets(warp, system);
-        println!("Loaded: Basic Solar System");
-    }
-    if window.is_key_pressed(KeyboardKey::KEY_TWO) {
-        *system = SolarSystem::create_alien_system();
-        setup_warp_targets(warp, system);
-        println!("Loaded: Alien Binary Star System");
     }
 }
 
@@ -302,12 +285,11 @@ fn print_controls() {
     println!("║ WARP CONTROLS:                         ║");
     println!("║   TAB     - Warp to next object        ║");
     println!("║   3-9     - Warp to specific object    ║");
+    println!("║   ESC     - Cancel warp (if active)    ║");
     println!("╠════════════════════════════════════════╣");
     println!("║ DISPLAY:                               ║");
     println!("║   O       - Toggle orbit paths         ║");
     println!("║   V       - Toggle spaceship           ║");
-    println!("║   1       - Basic solar system         ║");
-    println!("║   2       - Alien binary system        ║");
     println!("╠════════════════════════════════════════╣");
     println!("║   ESC     - Exit                       ║");
     println!("╚════════════════════════════════════════╝\n");

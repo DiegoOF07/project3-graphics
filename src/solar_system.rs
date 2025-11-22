@@ -187,16 +187,6 @@ impl SolarSystem {
             ShaderType::CloudPlanet
         ));
         
-        // Moon orbiting Earth (planeta pequeño orbitando otro planeta)
-        // Solo necesitas crear un planeta con radio de órbita pequeño y agregarlo como hijo de Earth
-        system.add(CelestialObject::moon(
-            earth_idx,
-            0.8,      // radio de órbita pequeño (distancia desde Earth)
-            0.15,     // velocidad de órbita más rápida que los planetas grandes
-            0.12,     // escala pequeña (es una luna)
-            ShaderType::Rocky
-        ));
-        
         // Gas giant (Jupiter-like)
         let jupiter_idx = system.add(CelestialObject::planet(
             sun_idx,
@@ -206,99 +196,12 @@ impl SolarSystem {
             ShaderType::GasGiant
         ));
         
-        // Moons of gas giant
-        system.add(CelestialObject::moon(
-            jupiter_idx,
-            1.3,
-            0.12,
-            0.15,
-            ShaderType::IceWorld
-        ));
-        
-        system.add(CelestialObject::moon(
-            jupiter_idx,
-            1.8,
-            0.09,
-            0.18,
-            ShaderType::Rocky
-        ));
-        
         // Outer ice world
         system.add(CelestialObject::planet(
             sun_idx,
             30.0,
             0.02,
             0.8,
-            ShaderType::IceWorld
-        ));
-        
-        system
-    }
-    
-    /// Create an alien system with exotic planets
-    pub fn create_alien_system() -> Self {
-        let mut system = SolarSystem::new();
-        
-        // Binary star system (two stars)
-        let star1_idx = system.add(CelestialObject::star(1.2));
-        
-        let mut star2 = CelestialObject::star(0.8);
-        star2.shader_type = ShaderType::Lava; // Orange dwarf
-        star2.scale = 0.8;
-        star2.parent_index = Some(star1_idx);
-        star2.orbit_radius = 3.0;
-        star2.orbit_speed = 0.1;
-        system.add(star2);
-        
-        // Lava world close to stars
-        system.add(CelestialObject::planet(
-            star1_idx,
-            6.0,
-            0.12,
-            0.5,
-            ShaderType::Lava
-        ));
-        
-        // Large gas giant
-        let giant_idx = system.add(CelestialObject::planet(
-            star1_idx,
-            10.0,
-            0.04,
-            1.2,
-            ShaderType::GasGiant
-        ));
-        
-        // Multiple moons around giant
-        system.add(CelestialObject::moon(
-            giant_idx,
-            1.8,
-            0.15,
-            0.2,
-            ShaderType::IceWorld
-        ));
-        
-        system.add(CelestialObject::moon(
-            giant_idx,
-            2.3,
-            0.11,
-            0.25,
-            ShaderType::Lava
-        ));
-        
-        system.add(CelestialObject::moon(
-            giant_idx,
-            2.9,
-            0.08,
-            0.18,
-            ShaderType::CloudPlanet
-        ));
-        
-        // Distant frozen world
-        system.add(CelestialObject::planet(
-            star1_idx,
-            16.0,
-            0.02,
-            0.6,
             ShaderType::IceWorld
         ));
         

@@ -106,13 +106,24 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, light: &Light) -> Vec<Fra
                     light.position.y - world_pos.y,
                     light.position.z - world_pos.z,
                 );
-                normalize_vector3(&mut light_dir);
+                let light_dist = (light_dir.x * light_dir.x + light_dir.y * light_dir.y + light_dir.z * light_dir.z).sqrt();
+                
+                // Normalize light direction with minimum distance to avoid instability
+                if light_dist > 0.001 {
+                    light_dir.x /= light_dist;
+                    light_dir.y /= light_dist;
+                    light_dir.z /= light_dist;
+                }
 
-                // Lambertian shading: intensity = max(0, normal · light_dir)
-                let intensity = (interpolated_normal.x * light_dir.x
+                // Lambertian shading with ambient light to prevent black flickering
+                let dot_product = (interpolated_normal.x * light_dir.x
                     + interpolated_normal.y * light_dir.y
                     + interpolated_normal.z * light_dir.z)
                     .max(0.0);
+                
+                // Add ambient lighting (at least 30% brightness) to prevent flickering
+                let ambient = 0.3;
+                let intensity = ambient + (1.0 - ambient) * dot_product;
 
                 // Apply lighting to base color
                 let shaded_color = Vector3::new(
